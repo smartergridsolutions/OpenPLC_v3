@@ -35,7 +35,6 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <time.h>
-
 #include <spdlog/spdlog.h>
 
 #include "ladder.h"
@@ -55,10 +54,14 @@ time_t end_time;
 //Global Threads
 pthread_t modbus_thread;
 pthread_t dnp3_thread;
-#define LOG_BUFFER_SIZE 1000000
-unsigned char log_buffer[LOG_BUFFER_SIZE];
 
-std::shared_ptr<buffered_sink> log_sink;
+// Create a buffered log. This provides a circular buffer so that we can
+// provide logs to the front end. The buffer is allocated here so that
+// if the application starts, we are guaranteed that we can find a sufficiently
+// large block of memory.
+#define LOG_BUFFER_SIZE 100000
+unsigned char log_buffer[LOG_BUFFER_SIZE];
+buffered_sink log_sink(log_buffer, LOG_BUFFER_SIZE);
 
 //-----------------------------------------------------------------------------
 // Start the Modbus Thread
@@ -166,7 +169,7 @@ int waitForClient_interactive(int socket_fd)
     struct sockaddr_in client_addr;
     socklen_t client_len;
 
-	spdlog::info("Interactive Server: waiting for new client...");
+	spdlog::debug("Interactive Server: waiting for new client...");
 
     client_len = sizeof(client_addr);
     while (run_openplc)
@@ -200,7 +203,7 @@ int listenToClient_interactive(int client_fd, unsigned char *buffer)
 //-----------------------------------------------------------------------------
 void processCommand(unsigned char *buffer, int client_fd)
 {
-    spdlog::info("Process command received {}", buffer);
+    spdlog::debug("Process command received {}", buffer);
 
     int count_char = 0;
     
@@ -295,7 +298,7 @@ void processCommand(unsigned char *buffer, int client_fd)
     {
         processing_command = true;
         spdlog::debug("Issued runtime_logs() command");
-        std::string data = log_sink->data();
+        std::string data = log_sink.data();
         write(client_fd, data.c_str(), data.size());
         processing_command = false;
         return;
@@ -305,19 +308,21 @@ void processCommand(unsigned char *buffer, int client_fd)
         processing_command = true;
         time(&end_time);
         count_char = sprintf(buffer, "%llu\n", (unsigned long long)difftime(end_time, start_time));
-        //write(client_fd, buffer, count_char);
+        write(client_fd, buffer, count_char);
         processing_command = false;
         return;
     }
     else
     {
+        spdlog::info("Received command was unrecognized");
         processing_command = true;
         count_char = sprintf(buffer, "Error: unrecognized command\n");
-        //write(client_fd, buffer, count_char);
+        write(client_fd, buffer, count_char);
         processing_command = false;
         return;
     }
     
+    spdlog::info("Command completed with OK");
     count_char = sprintf(buffer, "OK\n");
     write(client_fd, buffer, count_char);
 }
@@ -350,7 +355,7 @@ void *handleConnections_interactive(void *arguments)
     unsigned char buffer[1024];
     int messageSize;
 
-	spdlog::info("Interactive Server: Thread created for client ID: {}", client_fd);
+	spdlog::debug("Interactive Server: Thread created for client ID: {}", client_fd);
 
     while(run_openplc)
     {
@@ -360,10 +365,10 @@ void *handleConnections_interactive(void *arguments)
         messageSize = listenToClient_interactive(client_fd, buffer);
         if (messageSize <= 0 || messageSize > 1024)
         {
-            // something has  gone wrong or the client has closed connection
+            // something has gone wrong or the client has closed connection
             if (messageSize == 0)
             {
-				spdlog::info("Interactive Server: client ID: {} has closed the connection", client_fd);
+				spdlog::debug("Interactive Server: client ID: {} has closed the connection", client_fd);
             }
             else
             {
@@ -421,8 +426,11 @@ void startInteractiveServer(int port)
 	spdlog::info("Terminating interactive server thread");
 }
 
-void initializeLogging(int argc,char **argv)
+void initializeLogging(int argc, char **argv)
 {
-    log_sink.reset(new buffered_sink(log_buffer, LOG_BUFFER_SIZE));
-    spdlog::default_logger()->sinks().push_back(log_sink);
+    // We add this to the logger here because this particular
+    // function is not thread safe and we don't want to introduce
+    // unnecessary locks. We set the deleter to do nothing since
+    // the buffer is not on the heap.
+    spdlog::default_logger()->sinks().push_back(std::shared_ptr<buffered_sink>(&log_sink, [](spdlog::sinks::sink* sink) {}));
 }

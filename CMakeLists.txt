@@ -65,7 +65,7 @@ if(OPLC_MODBUS)
 	ExternalProject_Add(libmodbus_proj
 		SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/utils/libmodbus_src
 		BUILD_IN_SOURCE 1
-		CONFIGURE_COMMAND ./autogen.sh COMMAND ./configure  --prefix=${CMAKE_CURRENT_SOURCE_DIR}/utils/libmodbus_src/install
+		CONFIGURE_COMMAND ./autogen.sh COMMAND ./configure --prefix=${CMAKE_CURRENT_SOURCE_DIR}/utils/libmodbus_src/install
 		BUILD_COMMAND ${MAKE})
 
 	set(LIBMODBUS_INSTALL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/utils/libmodbus_src/install)
@@ -90,6 +90,7 @@ file(GLOB oplc_SRC webserver/core/dnp3_publisher.cpp webserver/core/dnp3_receive
 if (OPLC_NOOP_APP)
 	file(GLOB oplcnoop_SRC webserver/example/*.cpp)
 	add_executable(oplcnoop ${oplc_SRC} webserver/example/noop.cpp webserver/core/hardware_layers/blank.cpp webserver/core/main.cpp webserver/core/interactive_server.cpp webserver/core/server.cpp webserver/core/modbus.cpp webserver/core/modbus_master.cpp webserver/example/Config0.cpp)
+
 	add_dependencies(oplcnoop libmodbus_proj)
 	target_link_libraries(oplcnoop LINK_PUBLIC asiodnp3 libmodbus.so ${OPLC_PTHREAD})
 endif()

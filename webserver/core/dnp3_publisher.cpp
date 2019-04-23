@@ -46,8 +46,6 @@ std::uint32_t Dnp3Publisher::WriteToPoints()
 
 	spdlog::trace("Writing glue variables to DNP3 points");
 
-	spdlog::debug("Writing glue variables to DNP3 points");
-
     // Writes data points to the outstation. We support two capabilities here:
     //
     // * A set of ranges that we will map so that not all of the data needs to
